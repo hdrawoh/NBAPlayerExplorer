@@ -1,0 +1,260 @@
+---
+title: "Individual Case Study"
+author: "Howard Huang"
+date: "December 5, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(shiny)
+library(jpeg)
+library(DT)
+source("ir.R") ## set of functions useful for data mining
+
+```
+
+```{r}
+
+## load data
+playerData = readRDS("data/currentplayers.rds")
+
+```
+
+```{r}
+
+## prepare data for distance analysis
+
+playerData2 = playerData %>% as_data_frame
+
+## reclassify positions into integers
+playerData2$Pos[playerData2$Pos == "PG"] = 1
+playerData2$Pos[playerData2$Pos == "SG"] = 2
+playerData2$Pos[playerData2$Pos == "SF"] = 3
+playerData2$Pos[playerData2$Pos == "PF"] = 4
+playerData2$Pos[playerData2$Pos == "C"] = 5
+playerData2$Pos = playerData2$Pos %>% as.integer()
+
+## select important variables and combine by player
+playerData2 = playerData2 %>%
+  filter(Pos %in% 1:5) %>%
+  select(Name, Pos, PTS, TRB, AST, STL, BLK, TOV, `FG%`, `3P%`, `eFG%`) %>%
+  group_by(Name) %>%
+  summarise_all(mean) %>%
+  ungroup()
+
+rownames(playerData2) = playerData2$Name
+playerData2 = playerData2 %>% select(-Name)
+
+## normalize by dividing each row but its sum
+playerData2 = playerData2/rowSums(playerData2)
+
+#tpl = "LeBron James"
+#tiin = which(rownames(playerData2) == "LeBron James")
+#
+#mydtm = playerData2#[-tiin,]
+#q = playerData2[tiin,]
+#
+#mydtm.dl = mydtm/rowSums(mydtm)
+#dist.dl = sqrt(rowSums((scale(mydtm.dl, center = mydtm.dl[tiin,], scale = F)^2)))
+#mat.dl = cbind(mydtm.dl[,q], dist.dl)
+#colnames(mat.dl) = c(q,"dist.dl")
+
+## calculate distance between each player
+distmat = distances(playerData2)
+#what = distmat[222,]
+
+```
+
+```{r}
+
+## prepare data for Shiny app
+
+names = playerData %>% select(Name) %>% distinct() %>% as.vector()
+variables = c("PTS", "TRB", "AST", "STL", "BLK", "TOV", "FG%", "3P%", "eFG%")
+yaxischoices = c("Age", "Year")
+minyear = playerData %>% select(Year) %>% unlist() %>% min()
+maxyear = playerData %>% select(Year) %>% unlist() %>% max()
+
+
+```
+
+```{r}
+
+## Shiny app
+
+shinyApp(
+  shinyUI(
+    navbarPage("NBA Player Explorer", 
+               tabPanel(
+                 "Player Comparison",
+                 
+                 
+                 titlePanel("Compare a single player"),
+                 sidebarLayout(
+                   sidebarPanel = sidebarPanel(
+                     selectInput("player", label = h3("Choose a player:"),
+                                 choices = names,
+                                 selected = "LeBron James"),
+                     htmlOutput("pic"),
+                     selectInput("yaxis", label = h3("X-axis:"),
+                                 choices = yaxischoices),
+                     selectInput("stat", label = h3("Choose a stat:"),
+                                 choices = variables),
+                     checkboxGroupInput("filterPosition", label = h3("Filter by position:"), 
+                                        choices = list("Point Guiard" = "PG", "Shooting Guard" = "SG", "Small Forward" = "SF", "Power Forward" = "PF", "Center" = "C"),
+                                        selected = c("PG", "SG", "SF", "PF", "C"))
+                     
+                   ),
+                   
+                   mainPanel = mainPanel(
+                     plotOutput("plot")
+                   )
+                   
+                 )
+               ),
+               tabPanel(
+                 "Top Players",
+                 
+                 titlePanel("Find the top players"),
+                 sidebarLayout(
+                   sidebarPanel = sidebarPanel(
+                     #selectInput("stat2", label = h3("Choose a stat:"),
+                     #           choices = variables),
+                     checkboxGroupInput("filterPosition2", label = h3("Filter by position:"), 
+                                        choices = list("Point Guiard" = "PG", "Shooting Guard" = "SG", "Small Forward" = "SF", "Power Forward" = "PF", "Center" = "C"),
+                                        selected = c("PG", "SG", "SF", "PF", "C")),
+                     sliderInput("year", label = h3("Year Range"), min = minyear, 
+                                 max = maxyear, value = c(minyear, maxyear))
+                   ),
+                   
+                   mainPanel = mainPanel(
+                     h3("Points per Game Leaders"),
+                     DT::dataTableOutput("sortplayers"),
+                     h3("Rebounds per Game Leaders"),
+                     DT::dataTableOutput("sortplayers2"),
+                     h3("Assists per Game Leaders"),
+                     DT::dataTableOutput("sortplayers3")
+                   )
+                 )),
+               
+               tabPanel(
+                 "Similar Players",
+                 titlePanel("Find similar players"),
+                 sidebarLayout(
+                   sidebarPanel = sidebarPanel(
+                     selectInput("player2", label = h3("Choose a player:"),
+                                 choices = names,
+                                 selected = "LeBron James"),
+                     htmlOutput("pic2")
+                   ),
+                   mainPanel = mainPanel(
+                     h3("Similar players:"),
+                     DT::dataTableOutput("simplayers")
+                   )
+                   
+                 )
+               )
+               
+    )
+  )
+  ,
+  
+  
+  server = function(input, output, session)
+  {
+    ## plot comparing chosen player to all other players
+    
+    output$plot = renderPlot({
+      
+      testData = playerData
+      
+      testData = testData %>% filter(Pos %in% input$filterPosition)
+      
+      df1 = testData[, c(input$yaxis, input$stat)] %>%
+        setNames(c("x", "y"))
+      
+      df = testData %>% filter(Name == input$player)
+      df = df[, c(input$yaxis, input$stat)] %>%
+        setNames(c("x", "y"))
+      
+      ## plot one time with all data and another time (in red) with player of interest
+      ggplot(df1, aes(x = x, y = y)) + 
+        geom_point() +
+        geom_smooth(se = F, color = "grey") + 
+        theme_bw() + 
+        geom_point(data = df, aes(x = x, y = y), color = "red", size = 3) + 
+        geom_smooth(data = df, se = F, color = "red")
+      
+      #ggplot(df, aes(x = x, y = y)) + 
+      #  geom_point() +
+      #  geom_smooth(se = F) + 
+      #  theme_bw()
+    })
+    
+    #output$pic = renderImage({
+    #  url = playerData %>% filter(Name == input$player) %>% select(Image) %>% distinct() %>% unlist() %>% as.character()
+    #  download.file(url, "test.jpg", mode = 'wb')
+    #  jj <- readJPEG("test.jpg",native=TRUE)
+    #  plot(0:1,0:1,type="n",ann=FALSE,axes=FALSE)
+    #  rasterImage(jj,0,0,1,1)
+    #})
+    
+    ## get player's picture
+    
+    output$pic <-
+      renderText({
+        url = playerData %>% filter(Name == input$player) %>% select(Image) %>% distinct() %>% unlist() %>% as.character()
+        c(
+          '<img src="',
+          url,
+          '">'
+        )
+      })
+    
+    ## 3 tables for points, rebounds, assists
+    
+    output$sortplayers = DT::renderDataTable({
+      playerData %>% filter(Pos %in% input$filterPosition2) %>% arrange(desc(PTS)) %>% select(Name, Year, PTS) %>% filter(Year %in% input$year[1]:input$year[2])
+    })
+    output$sortplayers2 = DT::renderDataTable({
+      playerData %>% filter(Pos %in% input$filterPosition2) %>% arrange(desc(TRB)) %>% select(Name, Year, TRB) %>% filter(Year %in% input$year[1]:input$year[2])
+    })
+    
+    output$sortplayers3 = DT::renderDataTable({
+      playerData %>% filter(Pos %in% input$filterPosition2) %>% arrange(desc(AST)) %>% select(Name, Year, AST) %>% filter(Year %in% input$year[1]:input$year[2])
+    })
+    
+    ## table for which players are most similar
+    
+    output$simplayers = DT::renderDataTable({
+      #distmat[which(input$player2 == rownames(distmat)),]
+      data_frame("Names" = colnames(distmat), "Distance" = distmat[which(input$player2 == rownames(distmat)),]) %>% arrange(Distance)
+      
+    })
+    
+    output$pic2 <-
+      renderText({
+        url = playerData %>% filter(Name == input$player2) %>% select(Image) %>% distinct() %>% unlist() %>% as.character()
+        c(
+          '<img src="',
+          url,
+          '">'
+        )
+      })
+    
+    
+    
+  }
+)
+
+```
+
+
+To get images onto Shiny:
+https://stackoverflow.com/questions/43322327/how-to-load-external-image-to-shiny/43322850

@@ -1,0 +1,68 @@
+---
+title: "Individual Case Study"
+author: "Howard Huang"
+date: "December 5, 2018"
+output: pdf_document
+---
+
+Get all the urls for the pages of all current NBA players and download them into a file.  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(rvest)
+library(magrittr)
+library(fs)
+
+```
+
+```{r}
+
+## get the page where I will scrape all the current players from
+
+base_url = "https://www.basketball-reference.com"
+page = read_html(paste0(base_url, "/leagues/NBA_2019_per_game.html"))
+
+```
+
+```{r}
+
+## get list of current players
+
+urls = page %>% 
+  html_nodes("th+ .left a") %>%
+  html_attr("href") %>%
+  paste0(base_url, .)
+
+```
+
+```{r}
+
+## create output directory
+
+output_dir = "data/current"
+fs::dir_create(output_dir, recursive = T)
+
+p = progress_estimated(length(urls))
+
+```
+
+```{r}
+
+## download all the player pages for current NBA players
+
+walk(
+  urls,
+  function(url) {
+    download.file(url, destfile = fs::path(output_dir, fs::path_file(url)), quiet = T)
+    
+    ## progress bar
+    p$tick()$print()
+  }
+)
+
+```
