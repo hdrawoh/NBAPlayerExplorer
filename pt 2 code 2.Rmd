@@ -1,0 +1,227 @@
+---
+title: "Individual Case Study"
+author: "Howard Huang"
+date: "December 5, 2018"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(rvest)
+library(magrittr)
+library(fs)
+
+```
+
+```{r}
+
+files = fs::dir_ls("data/all")
+testfiles = files[1:4]
+
+```
+
+```{r}
+
+rawData = tibble()
+
+## get the name, table called "per_game", and picture url for each player in the list of files
+for(i in 1:length(files)){
+  page = read_html(files[i])
+  name = page %>% html_nodes("h1") %>% html_text()
+  #image = page %>% html_nodes("#meta img") %>% html_attr("src")
+  stats = page %>% html_nodes("#per_game") %>% html_table() %>% .[[1]] %>% cbind("Name" = name)
+  rawData = bind_rows(mutate_all(rawData, as.character), mutate_all(stats, as.character))
+}
+
+```
+
+```{r}
+
+playerData = rawData
+
+## make season into an integer by assigning first year of season as year
+playerData = playerData %>% mutate("Year" = substr(Season, 1, 4) %>% as.numeric())
+
+## remove all rows that aren't representing a single year (and coerce NA's in the previous step)
+playerData = playerData %>% filter(!is.na(Year))
+
+## select necessary variables
+playerData = playerData %>% select(Name, Age, Season, Year, Tm, Pos, PTS, TRB, AST, STL, BLK, TOV, `FG%`, `FT%`, `3P%`, `eFG%`, G)
+
+## recode variables
+playerData = playerData %>% 
+  mutate(PTS = PTS %>% as.numeric()) %>%
+  mutate(TRB = TRB %>% as.numeric()) %>%
+  mutate(AST = AST %>% as.numeric()) %>% 
+  mutate(STL = STL %>% as.numeric()) %>%
+  mutate(BLK = BLK %>% as.numeric()) %>%
+  mutate(TOV = TOV %>% as.numeric()) %>%
+  mutate(`FG%` = `FG%` %>% as.numeric()) %>%
+  mutate(`FT%` = `FT%` %>% as.numeric()) %>%
+  mutate(`3P%` = `3P%` %>% as.numeric()) %>%
+  mutate(`eFG%` = `eFG%` %>% as.numeric()) %>%
+  mutate(`G` = `G` %>% as.numeric())
+
+## remove all rows that a player didn't actually play in
+playerData = playerData %>% filter(!is.na(PTS))
+
+## implement a for loop for how many years a player has been in the league
+
+playerData$"Year in League" = 0
+yil = 1
+yilplayer = playerData[1,]$Name
+playerData[1,]$`Year in League` = 1
+
+for(i in 2:dim(playerData)[1]){
+  testyilplayer = playerData[i,]$Name
+  if(testyilplayer == yilplayer){
+    yil = yil + 1
+    playerData[i,]$`Year in League` = yil
+  } else {
+    yil = 1
+    playerData[i,]$`Year in League` = yil
+    yilplayer = playerData[i,]$Name
+  }
+}
+
+## calculate season totals by hand
+
+playerData = playerData %>%
+  mutate("PTS Total" = PTS * G) %>%
+  mutate("TRB Total" = TRB * G) %>%
+  mutate("AST Total" = AST * G) %>%
+  mutate("STL Total" = STL * G) %>%
+  mutate("BLK Total" = BLK * G) %>%
+  mutate("TOV Total" = TOV * G)
+
+
+```
+
+```{r}
+
+## save that data
+
+saveRDS(playerData, file = "data/allplayers.rds")
+
+```
+
+
+
+```{r}
+
+## Getting "#totals" doesn't work for some reason
+
+#rawData2 = tibble()
+#
+### get the name, table called "per_game", and picture url for each player in the list of files
+#for(i in 1:length(files)){
+#  page = read_html(files[i])
+#  name = page %>% html_nodes("h1") %>% html_text()
+#  #image = page %>% html_nodes("#meta img") %>% html_attr("src")
+#  stats = page %>% html_nodes("#totals") %>% html_table() %>% .[[1]] %>% cbind("Name" = name)
+#  rawData = bind_rows(mutate_all(rawData2, as.character), mutate_all(stats, as.character))
+#}
+
+```
+
+```{r}
+
+#playerTotalsData = rawData2
+#
+### make season into an integer by assigning first year of season as year
+#playerData = playerData %>% mutate("Year" = substr(Season, 1, 4) %>% as.numeric())
+#
+### remove all rows that aren't representing a single year (and coerce NA's in the previous step)
+#playerData = playerData %>% filter(!is.na(Year))
+#
+### select necessary variables
+#playerData = playerData %>% select(Name, Age, Season, Year, Tm, Pos, PTS, TRB, AST, STL, BLK, TOV, `FG%`, `3P%`, `eFG%`)
+#
+### recode variables
+#playerData = playerData %>% 
+#  mutate(PTS = PTS %>% as.numeric()) %>%
+#  mutate(TRB = TRB %>% as.numeric()) %>%
+#  mutate(AST = AST %>% as.numeric()) %>% 
+#  mutate(STL = STL %>% as.numeric()) %>%
+#  mutate(BLK = BLK %>% as.numeric()) %>%
+#  mutate(TOV = TOV %>% as.numeric()) %>%
+#  mutate(`FG%` = `FG%` %>% as.numeric()) %>%
+#  mutate(`3P%` = `3P%` %>% as.numeric()) %>%
+#  mutate(`eFG%` = `eFG%` %>% as.numeric())
+#
+### remove all rows that a player didn't actually play in
+#playerData = playerData %>% filter(!is.na(PTS))
+#
+### implement a for loop for how many years a player has been in the league
+#
+#playerData$"Year in League" = 0
+#yil = 1
+#yilplayer = playerData[1,]$Name
+#playerData[1,]$`Year in League` = 1
+#
+#for(i in 2:dim(playerData)[1]){
+#  testyilplayer = playerData[i,]$Name
+#  if(testyilplayer == yilplayer){
+#    yil = yil + 1
+#    playerData[i,]$`Year in League` = yil
+#  } else {
+#    yil = 1
+#    playerData[i,]$`Year in League` = yil
+#    yilplayer = playerData[i,]$Name
+#  }
+#}
+
+
+```
+
+```{r}
+
+## save that data
+
+#saveRDS(playerData, file = "data/allplayers.rds")
+
+```
+
+```{r}
+
+#what = map_df(
+#  testfiles,
+#  function(file){
+#    page = read_html(file)
+#    
+#    name = page %>% html_nodes("h1") %>% html_text()
+#    team = page %>% html_nodes("#meta div") %>% html_text(trim = T) %>% .[2] %>% 
+#  str_replace_all("\r", "") %>% 
+#  str_replace_all("\n", "") %>% 
+#  str_replace_all("\t", "") %>% 
+#  str_replace_all(" ", "")
+#    
+#  }
+#)
+
+```
+
+```{r}
+
+#testfiles[1] %>% read_html() %>% html_nodes("#meta div") %>% html_text(trim = T) %>% .[2] %>% 
+#  str_replace_all("\r", "") %>% 
+#  str_replace_all("\n", "") %>% 
+#  str_replace_all("\t", "") %>% 
+#  str_replace_all(" ", "")
+#  
+#testfiles[1] %>% read_html() %>% html_nodes("#per_game .full_table .center , #per_game .full_table .left , #per_game .full_table #.right") %>% html_table()
+#
+#what1 = testfiles[1] %>% read_html() %>% html_nodes("#per_game") %>% html_table() %>% .[[1]] %>% cbind("Name" = "what")
+#what2 = testfiles[2] %>% read_html() %>% html_nodes("#per_game") %>% html_table() %>% .[[1]] %>% cbind("Name" = "what2")
+#
+#rbind(what1, what2)
+
+#testfiles[1] %>% read_html() %>% html_nodes("#meta img") %>% html_attr("src")
+
+
+```

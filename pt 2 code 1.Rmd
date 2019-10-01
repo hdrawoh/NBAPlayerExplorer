@@ -1,0 +1,117 @@
+---
+title: "Individual Case Study"
+author: "Howard Huang"
+date: "December 5, 2018"
+output: pdf_document
+---
+
+Get all the urls for the pages of all current NBA players and download them into a file.  
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r}
+
+library(tidyverse)
+library(rvest)
+library(magrittr)
+library(fs)
+
+```
+
+```{r}
+
+## get the page where I will scrape all the current players from
+
+base_url = "https://www.basketball-reference.com"
+page = read_html(paste0(base_url, "/players/"))
+
+```
+
+```{r}
+
+## get list of list of all players
+
+urls = page %>% 
+  html_nodes(".page_index li > a") %>%
+  html_attr("href") %>%
+  paste0(base_url, .) %>% 
+  .[1:25]
+
+```
+
+```{r}
+
+## create output directory for lists of players
+
+output_dir = "data/lists"
+fs::dir_create(output_dir, recursive = T)
+
+p = progress_estimated(length(urls))
+
+```
+
+```{r}
+
+## download all pages that are the lists of players
+
+walk(
+  urls,
+  function(url) {
+    download.file(url, destfile = fs::path(output_dir, fs::path_file(url)), quiet = T)
+    
+    ## progress bar
+    p$tick()$print()
+  }
+)
+
+```
+
+```{r}
+
+files = fs::dir_ls("data/lists")
+
+```
+
+```{r}
+
+## get all the individual player page links 
+
+playerLinks = character()
+
+for(i in 1:length(files)){
+  page = read_html(files[i])
+  players = page %>% html_nodes("th a") %>% html_attr("href")
+  playerlink = paste0(base_url, players)
+  playerLinks = c(playerLinks, playerlink)
+}
+
+```
+
+```{r}
+
+## create output directory
+
+output_dir = "data/all"
+fs::dir_create(output_dir, recursive = T)
+
+p = progress_estimated(length(playerLinks))
+
+```
+
+```{r}
+
+## download all the player pages for current NBA players
+
+walk(
+  playerLinks,
+  function(url) {
+    download.file(url, destfile = fs::path(output_dir, fs::path_file(url)), quiet = T)
+    
+    ## progress bar
+    p$tick()$print()
+  }
+)
+
+```
